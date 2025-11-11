@@ -11,6 +11,7 @@ A starter template for building AI-driven workflow orchestration systems using F
 - PostgreSQL-backed workflow persistence
 - Support for workflow interrupts and continuations
 - Non-blocking concurrent workflow execution using ThreadPoolExecutor
+- LLM response validation and retry utilities with LiteLLM integration
 
 ## Prerequisites
 
@@ -135,6 +136,18 @@ Retrieve the current state of a workflow thread.
   }
 }
 ```
+
+## Roadmap
+
+Planned features and improvements:
+
+- [ ] Add logging and log rotation in file
+- [ ] Add authentication
+- [ ] Add Prometheus metrics
+- [ ] Add tool calling example
+- [ ] Langfuse middlewares for LLM observability
+- [ ] Add rate limiting
+- [ ] Replace sample agent with production-ready agent/chatbot (e.g., email agent)
 
 ## Notes
 
