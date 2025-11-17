@@ -12,6 +12,7 @@ A starter template for building AI-driven workflow orchestration systems using F
 - Support for workflow interrupts and continuations
 - Non-blocking concurrent workflow execution using ThreadPoolExecutor
 - LLM response validation and retry utilities with LiteLLM integration
+- Added langfuse for observability and tracing
 
 ## Prerequisites
 
@@ -145,7 +146,6 @@ Planned features and improvements:
 - [ ] Add authentication
 - [ ] Add Prometheus metrics
 - [ ] Add tool calling example
-- [ ] Langfuse middlewares for LLM observability
 - [ ] Add rate limiting
 - [ ] Replace sample agent with production-ready agent/chatbot (e.g., email agent)
 
