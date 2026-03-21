@@ -1,7 +1,8 @@
 import os
 from abc import ABC, abstractmethod
-from typing import TypedDict, Any, Dict, Optional
+from typing import TypedDict, Any, Dict, Optional, Union
 from dataclasses import dataclass
+from threading import Lock
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.runnables.graph import MermaidDrawMethod
@@ -14,30 +15,76 @@ from psycopg.rows import dict_row
 from agents.postgres import get_connection_pool
 from agents.resilient_postgres_saver import ResilientPostgresSaver
 from dotenv import load_dotenv
+from tools.logger_config import logger as logging
 
 load_dotenv()
+
+_checkpointer_instance: Optional[Union[MemorySaver, ResilientPostgresSaver]] = None
+_checkpointer_lock = Lock()
 
 
 def create_checkpointer():
     """Create checkpointer based on DATABASE_TYPE environment variable"""
-    database_type = os.getenv("DATABASE_TYPE", "inmemory").lower()
-    if database_type != "postgres":
-        return MemorySaver()
+    global _checkpointer_instance
+    if _checkpointer_instance is not None:
+        return _checkpointer_instance
 
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        print("Warning: DATABASE_URL not set, falling back to MemorySaver")
-        return MemorySaver()
+    with _checkpointer_lock:
+        if _checkpointer_instance is not None:
+            return _checkpointer_instance
 
-    try:
-        conn_pool = get_connection_pool(database_url)
-        checkpointer = ResilientPostgresSaver(conn=conn_pool)
-        checkpointer.setup()
-        print("ResilientPostgresSaver initialized successfully")
-        return checkpointer
-    except Exception as e:
-        print(f"Warning: Failed to create ResilientPostgresSaver ({e}), falling back to MemorySaver")
-        return MemorySaver()
+        database_type = os.getenv("DATABASE_TYPE", "inmemory").lower()
+        if database_type != "postgres":
+            _checkpointer_instance = MemorySaver()
+            return _checkpointer_instance
+
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            logging.warning("DATABASE_URL not set, falling back to MemorySaver")
+            _checkpointer_instance = MemorySaver()
+            return _checkpointer_instance
+
+        try:
+            conn_pool = get_connection_pool(database_url)
+            _checkpointer_instance = ResilientPostgresSaver(conn=conn_pool)
+            _checkpointer_instance.setup()
+            logging.info("ResilientPostgresSaver initialized successfully")
+            return _checkpointer_instance
+        except Exception as e:
+            logging.warning(
+                "Failed to create ResilientPostgresSaver (%s), falling back to MemorySaver",
+                e,
+            )
+            # Do not cache the fallback here so that future calls can retry Postgres initialization
+            return MemorySaver()
+
+
+def close_checkpointer() -> None:
+    """Close any persistent checkpointer resources."""
+    global _checkpointer_instance
+    with _checkpointer_lock:
+        checkpointer = _checkpointer_instance
+        if checkpointer is None:
+            return
+        try:
+            close_method = getattr(checkpointer, "close", None)
+            if callable(close_method):
+                close_method()
+        except Exception as e:
+            logging.warning("Failed to close checkpointer connection (%s)", e)
+        finally:
+            _checkpointer_instance = None
+
+
+def reset_checkpointer() -> None:
+    """Reset the cached checkpointer and close any resources.
+
+    Resetting clears the cached instance so a subsequent call to
+    create_checkpointer() will build a fresh one. This is an alias for
+    close_checkpointer to preserve a clear API boundary if reset logic needs
+    to expand in the future.
+    """
+    close_checkpointer()
 
 
 class BaseWorkflowState(TypedDict):
